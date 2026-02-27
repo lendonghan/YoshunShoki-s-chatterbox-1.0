@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>像素语C终端 Lite | Pixel Character Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'sage': {
+                            50: '#f4f7f4', 100: '#e3ebe3', 200: '#c5d8c5', 300: '#9ebf9e',
+                            400: '#7aa37a', 500: '#5c885c', 600: '#466b46', 700: '#395539',
+                            800: '#2f452f', 900: '#283928',
+                        },
+                        'terracotta': {
+                            50: '#fbf7f3', 100: '#f5ebe0', 200: '#ead4bc', 300: '#deb696',
+                            400: '#d19772', 500: '#c47e56', 600: '#b86748', 700: '#99523c',
+                            800: '#7d4435', 900: '#65392e',
+                        },
+                        'cream': '#FAEDCD',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root { --pixel-size: 4px; --anim-speed: 1; --shadow-intensity: 1; }
+        .lite-mode { --anim-speed: 0; --shadow-intensity: 0.5; }
+        .lite-mode .pixel-bubble, .lite-mode .pixel-avatar, .lite-mode .pixel-card {
+            box-shadow: none !important; border-width: 2px !important;
+        }
+        .lite-mode .typing-cursor::after { display: none; }
+
+        * { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; 
+            image-rendering: pixelated; image-rendering: crisp-edges; box-sizing: border-box; }
+        body { background-color: #1a1a1a; overflow: hidden; touch-action: manipulation; }
+
+        .pixel-btn { position: relative; background: #7aa37a; color: white; border: none; 
+            padding: 10px 20px; font-weight: 600; cursor: pointer;
+            box-shadow: inset -3px -3px 0 0 rgba(0,0,0,0.2), inset 3px 3px 0 0 rgba(255,255,255,0.3),
+                0 3px 0 0 #2f452f, 0 6px 0 0 rgba(0,0,0,0.2);
+            transition: transform 0.1s; text-transform: uppercase; letter-spacing: 0.5px; 
+            font-size: 13px; will-change: transform; }
+        .pixel-btn:active { transform: translateY(3px); 
+            box-shadow: inset -3px -3px 0 0 rgba(0,0,0,0.2), inset 3px 3px 0 0 rgba(255,255,255,0.3), 0 0 0 0 #2f452f; }
+        .pixel-btn.secondary { background: #d19772; }
+        .pixel-btn.danger { background: #b86748; }
+        .pixel-btn.small { padding: 6px 12px; font-size: 11px;
+            box-shadow: inset -2px -2px 0 0 rgba(0,0,0,0.2), inset 2px 2px 0 0 rgba(255,255,255,0.3),
+                0 2px 0 0 #2f452f, 0 4px 0 0 rgba(0,0,0,0.2); }
+        .pixel-btn.small:active { transform: translateY(2px); box-shadow: none; }
+
+        .pixel-input { background: #FAEDCD; border: 3px solid #2f452f; padding: 10px; 
+            font-size: 16px; outline: none; width: 100%; color: #2f452f; border-radius: 0; }
+        .pixel-card { background: #f5ebe0; border: 3px solid #2f452f; 
+            box-shadow: 3px 3px 0 0 rgba(0,0,0,0.1); position: relative; will-change: transform; }
+
+        .device-frame { max-width: 414px; height: 100vh; margin: 0 auto; background: #c5d8c5; 
+            position: relative; overflow: hidden; box-shadow: 0 0 0 4px #2f452f; contain: layout style paint; }
+        @media (min-width: 415px) { .device-frame { height: 90vh; margin-top: 5vh; } }
+
+        .pixel-status { background: #2f452f; color: #c5d8c5; font-family: 'JetBrains Mono', monospace; 
+            font-size: 12px; font-weight: 700; height: 36px; display: flex; align-items: center; 
+            justify-content: space-between; padding: 0 16px; position: fixed; top: 0; width: 100%; 
+            max-width: 414px; z-index: 100; contain: layout; }
+
+        .pixel-bubble { position: relative; padding: 10px 14px; max-width: 75%; font-size: 15px; 
+            line-height: 1.4; border: 3px solid #2f452f; word-wrap: break-word; contain: content; }
+        .bubble-received { background: #f5ebe0; color: #2f452f; margin-left: 8px; }
+        .bubble-sent { background: #7aa37a; color: white; margin-right: 8px; }
+
+        .pixel-avatar { width: 40px; height: 40px; border: 3px solid #2f452f; background: #deb696; 
+            flex-shrink: 0; object-fit: cover; }
+
+        .pixel-typing { display: flex; gap: 4px; padding: 12px; background: #f5ebe0; border: 3px solid #2f452f; }
+        .pixel-dot { width: 6px; height: 6px; background: #2f452f; animation: blink 1s infinite; }
+        @keyframes blink { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+        .pixel-range { -webkit-appearance: none; width: 100%; height: 12px; background: #FAEDCD; 
+            border: 3px solid #2f452f; outline: none; margin: 10px 0; }
+        .pixel-range::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; 
+            background: #7aa37a; border: 3px solid #2f452f; cursor: pointer; box-shadow: 2px 2px 0 rgba(0,0,0,0.2); }
+
+        .pixel-tab-bar { background: #e3ebe3; border-top: 3px solid #2f452f; height: 64px; 
+            position: fixed; bottom: 0; width: 100%; max-width: 414px; display: flex; 
+            justify-content: space-around; align-items: center; z-index: 50; contain: layout; }
+        .pixel-tab-btn { color: #7aa37a; background: none; border: none; padding: 8px; font-size: 10px; 
+            font-weight: 700; cursor: pointer; display: flex; flex-direction: column; align-items: center; 
+            gap: 4px; transition: color 0.2s; }
+        .pixel-tab-btn.active { color: #b86748; }
+
+        .pixel-menu { position: absolute; top: 48px; right: 8px; background: #f5ebe0; 
+            border: 3px solid #2f452f; box-shadow: 4px 4px 0 rgba(0,0,0,0.3); z-index: 100; 
+            min-width: 160px; animation: menuPop 0.15s ease-out; }
+        @keyframes menuPop { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+        .pixel-menu-item { padding: 10px 14px; cursor: pointer; border-bottom: 2px solid #2f452f; 
+            font-size: 13px; font-weight: 600; color: #2f452f; display: flex; align-items: center; gap: 8px; }
+        .pixel-menu-item:last-child { border-bottom: none; }
+        .pixel-menu-item:hover { background: #ead4bc; }
+        .pixel-menu-item.danger { color: #b86748; }
+        .pixel-menu-item.danger:hover { background: #b86748; color: white; }
+
+        .pixel-modal { background: rgba(26, 26, 26, 0.95); position: fixed; inset: 0; z-index: 200; 
+            display: flex; align-items: center; justify-content: center; padding: 16px; contain: layout style; }
+        .pixel-modal-content { background: #f4f7f4; border: 4px solid #2f452f; width: 100%; 
+            max-width: 360px; max-height: 85vh; overflow-y: auto; box-shadow: 8px 8px 0 rgba(0,0,0,0.3); contain: layout; }
+
+        .hidden { display: none !important; }
+        .param-value { font-family: 'JetBrains Mono', monospace; background: #2f452f; color: #c5d8c5; 
+            padding: 2px 8px; font-size: 12px; font-weight: 700; }
+        .pixel-toggle { position: relative; width: 48px; height: 24px; background: #c5d8c5; 
+            border: 3px solid #2f452f; cursor: pointer; transition: background 0.2s; }
+        .pixel-toggle.active { background: #7aa37a; }
+        .pixel-toggle::after { content: ''; position: absolute; top: 2px; left: 2px; width: 14px; 
+            height: 14px; background: #2f452f; transition: transform 0.2s; }
+        .pixel-toggle.active::after { transform: translateX(24px); }
+
+        .memory-bar { height: 4px; background: #2f452f; margin-top: 4px; position: relative; overflow: hidden; }
+        .memory-fill { height: 100%; background: #b86748; transition: width 0.3s; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #7aa37a; border: 2px solid #c5d8c5; }
+
+        /* About Page Styles - Updated without image */
+        .author-header {
+            text-align: center;
+            padding: 24px 16px;
+            background: linear-gradient(135deg, #c5d8c5 0%, #e3ebe3 100%);
+            border: 3px solid #2f452f;
+            box-shadow: 4px 4px 0 0 rgba(0,0,0,0.2);
+            margin-bottom: 16px;
+        }
+        .author-icon {
+            font-size: 48px;
+            color: #b86748;
+            margin-bottom: 12px;
+        }
+        .bilibili-link { display: flex; align-items: center; justify-content: center; gap: 8px; 
+            background: #b86748; color: white; padding: 12px 20px; border: 3px solid #2f452f; 
+            box-shadow: 4px 4px 0 0 rgba(0,0,0,0.2); text-decoration: none; font-weight: 700; 
+            transition: all 0.1s; cursor: pointer; width: 100%; }
+        .bilibili-link:active { transform: translateY(4px); box-shadow: 0 0 0 0 rgba(0,0,0,0.2); }
+        .heart-beat { animation: heartbeat 2s infinite; display: inline-block; }
+        @keyframes heartbeat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+    </style>
+</head>
+<body>
+
+<div class="device-frame" id="app">
+    <!-- Status Bar -->
+    <div class="pixel-status">
+        <span id="clock">09:41</span>
+        <div class="flex gap-2">
+            <span id="memory-indicator" class="text-[10px] opacity-70 hidden">MEM: <span id="mem-percent">0</span>%</span>
+            <i class="fas fa-signal"></i>
+            <i class="fas fa-wifi"></i>
+        </div>
+    </div>
+
+    <!-- Contacts View -->
+    <div id="contacts-view" class="view flex flex-col h-full pt-9 pb-16 overflow-hidden">
+        <div class="p-3 bg-sage-200 border-b-3 border-sage-800">
+            <div class="flex justify-between items-center mb-3">
+                <h1 class="text-xl font-bold text-sage-900 tracking-tight">
+                    <i class="fas fa-address-book mr-2 text-terracotta-600"></i>通讯终端
+                </h1>
+                <button onclick="showNewContactModal()" class="pixel-btn small"><i class="fas fa-plus"></i></button>
+            </div>
+            <input type="text" placeholder="搜索角色..." class="pixel-input text-sm" oninput="searchContacts(this.value)">
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-2" id="contacts-list"></div>
+    </div>
+
+    <!-- Chat View -->
+    <div id="chat-view" class="view hidden flex-col h-full pt-9 relative overflow-hidden">
+        <div class="absolute inset-0 opacity-5 pointer-events-none z-0" id="chat-bg" style="background-size: cover;"></div>
+        <div class="bg-sage-200 border-b-3 border-sage-800 p-2 flex items-center justify-between relative z-10 h-12">
+            <button onclick="backToContacts()" class="pixel-btn small secondary"><i class="fas fa-arrow-left"></i></button>
+            <div class="text-center flex-1 px-2 overflow-hidden">
+                <div id="chat-title" class="font-bold text-sage-900 text-sm truncate">角色名称</div>
+                <div id="chat-params" class="text-[10px] font-mono text-terracotta-700 truncate">T:0.7 | M:2048</div>
+            </div>
+            <button onclick="toggleChatMenu()" class="pixel-btn small"><i class="fas fa-ellipsis-v"></i></button>
+        </div>
+
+        <div id="chat-menu-overlay" class="hidden fixed inset-0 z-20" onclick="closeChatMenu()"></div>
+        <div id="chat-menu" class="pixel-menu hidden">
+            <div class="pixel-menu-item" onclick="openEditContactModal()"><i class="fas fa-edit text-sage-600"></i>编辑角色</div>
+            <div class="pixel-menu-item" onclick="openParamsModal()"><i class="fas fa-sliders-h text-terracotta-600"></i>模型参数</div>
+            <div class="pixel-menu-item" onclick="resetCurrentChat()"><i class="fas fa-broom text-terracotta-600"></i>清空记录</div>
+            <div class="pixel-menu-item danger" onclick="deleteCurrentContact()"><i class="fas fa-trash-alt"></i>删除角色</div>
+        </div>
+
+        <div id="messages-container" class="flex-1 overflow-y-auto p-3 space-y-3 relative z-10 pb-24 contain-layout"></div>
+
+        <div class="absolute bottom-16 left-0 right-0 bg-cream border-t-3 border-sage-800 p-2 z-20">
+            <div class="flex items-end gap-2">
+                <button onclick="toggleSearch()" id="search-btn" class="pixel-btn small secondary"><i class="fas fa-globe"></i></button>
+                <div class="flex-1">
+                    <textarea id="message-input" placeholder="输入消息..." rows="1" class="pixel-input text-sm resize-none" style="min-height: 40px;" onkeypress="handleKeyPress(event)"></textarea>
+                    <div id="search-indicator" class="hidden text-[10px] text-terracotta-700 font-bold mt-1"><i class="fas fa-wifi mr-1"></i>联网模式开启</div>
+                </div>
+                <button onclick="sendMessage()" class="pixel-btn small"><i class="fas fa-paper-plane"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Book -->
+    <div id="password-view" class="view hidden flex-col h-full pt-9 pb-16 bg-sage-50 overflow-hidden">
+        <div class="p-3 bg-sage-200 border-b-3 border-sage-800">
+            <h1 class="text-xl font-bold text-sage-900"><i class="fas fa-lock mr-2 text-terracotta-600"></i>密钥库</h1>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-2" id="password-list"></div>
+        <div class="p-2 bg-cream border-t-3 border-sage-800">
+            <button onclick="showNewPasswordModal()" class="pixel-btn w-full text-sm"><i class="fas fa-save mr-2"></i>存储新密钥</button>
+        </div>
+    </div>
+
+    <!-- About Author View - Without Image -->
+    <div id="about-view" class="view hidden flex-col h-full pt-9 pb-16 bg-sage-50 overflow-hidden">
+        <div class="p-3 bg-sage-200 border-b-3 border-sage-800 text-center">
+            <h1 class="text-xl font-bold text-sage-900"><i class="fas fa-heart mr-2 text-terracotta-600"></i>关于作者</h1>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto p-4 space-y-4">
+            <!-- Author Info - Text Only -->
+            <div class="author-header">
+                <div class="author-icon"><i class="fas fa-user-astronaut"></i></div>
+                <h2 class="text-2xl font-bold text-sage-900 mb-2">独角巴巴灵</h2>
+                <p class="text-sm text-sage-700 font-mono">PIXEL CHARACTER HUB</p>
+                <div class="mt-3 flex justify-center gap-2">
+                    <span class="text-[10px] bg-sage-600 text-white px-2 py-1 border-2 border-sage-800">DEVELOPER</span>
+                    <span class="text-[10px] bg-terracotta-500 text-white px-2 py-1 border-2 border-sage-800">DESIGNER</span>
+                </div>
+            </div>
+
+            <!-- Bilibili Link -->
+            <div class="pixel-card p-4 bg-cream">
+                <h3 class="font-bold text-sage-900 mb-3 text-sm border-b-2 border-sage-800 pb-2">
+                    <i class="fab fa-bilibili mr-2 text-terracotta-600"></i>关注我
+                </h3>
+                <p class="text-xs text-sage-700 mb-4 leading-relaxed">
+                    欢迎访问我的B站主页，获取更多有趣内容和更新动态！<br>
+                    分享创作过程与技术心得。
+                </p>
+                <a href="https://b23.tv/74tuTbZ" target="_blank" class="bilibili-link text-sm">
+                    <i class="fab fa-bilibili text-xl"></i>
+                    <span>访问B站主页</span>
+                    <i class="fas fa-external-link-alt text-xs"></i>
+                </a>
+            </div>
+
+            <!-- Thanks -->
+            <div class="pixel-card p-4 bg-terracotta-100 border-terracotta-800">
+                <div class="text-center">
+                    <div class="text-3xl mb-2">
+                        <span class="heart-beat">💚</span>
+                        <span class="heart-beat" style="animation-delay: 0.3s">🧡</span>
+                        <span class="heart-beat" style="animation-delay: 0.6s">💚</span>
+                    </div>
+                    <h3 class="font-bold text-terracotta-900 mb-2">感谢支持</h3>
+                    <p class="text-xs text-terracotta-800 leading-relaxed">
+                        感谢您的使用与支持！<br>
+                        每一个反馈都是我前进的动力。<br>
+                        愿你在像素世界里找到属于自己的角色！
+                    </p>
+                </div>
+            </div>
+
+            <!-- Project Info -->
+            <div class="pixel-card p-3 bg-sage-100 border-sage-800">
+                <h4 class="font-bold text-sage-900 text-xs mb-2">项目信息</h4>
+                <div class="space-y-1 text-[10px] text-sage-700 font-mono">
+                    <div class="flex justify-between"><span>类型:</span><span>LLM 角色扮演客户端</span></div>
+                    <div class="flex justify-between"><span>特点:</span><span>轻量 / 像素风 / 本地存储</span></div>
+                    <div class="flex justify-between"><span>许可:</span><span>Open Source</span></div>
+                </div>
+            </div>
+
+            <div class="text-center text-[10px] text-sage-600 font-mono pb-4">
+                <div>Made with <i class="fas fa-heart text-terracotta-500"></i> by 独角巴巴灵</div>
+                <div class="mt-1">v2.1.0-lite</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings -->
+    <div id="settings-view" class="view hidden flex-col h-full pt-9 pb-16 bg-sage-50 overflow-hidden">
+        <div class="p-3 bg-sage-200 border-b-3 border-sage-800">
+            <h1 class="text-xl font-bold text-sage-900"><i class="fas fa-cog mr-2 text-terracotta-600"></i>系统设置</h1>
+        </div>
+        <div class="flex-1 overflow-y-auto p-3 space-y-3">
+            <div class="pixel-card p-3 bg-cream">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h3 class="font-bold text-sage-900 text-sm">轻量模式</h3>
+                        <p class="text-[10px] text-sage-600">适用于低内存设备 (1.5GB)</p>
+                    </div>
+                    <div class="pixel-toggle" id="lite-toggle" onclick="toggleLiteMode()"></div>
+                </div>
+                <div class="text-[10px] text-sage-600 space-y-1">
+                    <div class="flex justify-between"><span>消息保留上限:</span><span class="font-mono font-bold" id="msg-limit-display">50条</span></div>
+                    <div class="flex justify-between"><span>图片压缩:</span><span class="font-mono font-bold">512px</span></div>
+                    <div class="flex justify-between"><span>动画效果:</span><span class="font-mono font-bold" id="anim-status">开启</span></div>
+                </div>
+            </div>
+
+            <div class="pixel-card p-3 bg-cream">
+                <h3 class="font-bold text-sage-900 text-sm mb-2">内存监控</h3>
+                <div class="flex justify-between text-[10px] mb-1"><span>存储使用</span><span id="storage-size">0 KB</span></div>
+                <div class="memory-bar"><div class="memory-fill" id="storage-bar" style="width: 0%"></div></div>
+                <button onclick="clearCache()" class="pixel-btn danger w-full mt-3 text-xs py-2"><i class="fas fa-trash mr-1"></i>清理所有缓存</button>
+            </div>
+
+            <div class="pixel-card p-3 bg-cream">
+                <div class="flex justify-between items-center text-xs">
+                    <span class="font-mono text-sage-600">VERSION</span>
+                    <span class="font-bold text-terracotta-700">v2.1.0-lite</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab Bar -->
+    <div class="pixel-tab-bar">
+        <button onclick="switchTab('contacts')" class="pixel-tab-btn active" data-tab="contacts">
+            <i class="fas fa-users text-lg"></i><span>通讯录</span>
+        </button>
+        <button onclick="switchTab('password')" class="pixel-tab-btn" data-tab="password">
+            <i class="fas fa-key text-lg"></i><span>密钥</span>
+        </button>
+        <button onclick="switchTab('about')" class="pixel-tab-btn" data-tab="about">
+            <i class="fas fa-heart text-lg"></i><span>关于</span>
+        </button>
+        <button onclick="switchTab('settings')" class="pixel-tab-btn" data-tab="settings">
+            <i class="fas fa-cog text-lg"></i><span>设置</span>
+        </button>
+    </div>
+
+    <!-- New Contact Modal -->
+    <div id="new-contact-modal" class="pixel-modal hidden">
+        <div class="pixel-modal-content p-4">
+            <div class="flex justify-between items-center mb-4 border-b-3 border-sage-800 pb-2">
+                <h2 class="text-lg font-bold text-sage-900">新建角色</h2>
+                <button onclick="closeModal('new-contact-modal')" class="text-sage-700 text-xl"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                <div>
+                    <label class="text-xs font-bold text-sage-700 uppercase">API配置</label>
+                    <select id="api-config-select" class="pixel-input text-sm mt-1"><option value="">选择密钥...</option></select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <img id="new-avatar-preview" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='%23d19772' viewBox='0 0 48 48'%3E%3Cpath d='M24 4C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95 20-20S35.05 4 24 4zm0 6c3.31 0 6 2.69 6 6 0 3.32-2.69 6-6 6s-6-2.68-6-6c0-3.31 2.69-6 6-6zm0 28.4c-5.01 0-9.41-2.56-12-6.44.05-3.97 8.01-6.16 12-6.16s11.94 2.19 12 6.16c-2.59 3.88-6.99 6.44-12 6.44z'/%3E%3C/svg%3E" class="pixel-avatar w-10 h-10">
+                    <div class="flex-1"><input type="text" id="contact-name" placeholder="角色名称" class="pixel-input text-sm"></div>
+                    <button onclick="document.getElementById('avatar-input').click()" class="pixel-btn small secondary"><i class="fas fa-camera"></i></button>
+                    <input type="file" id="avatar-input" accept="image/*" class="hidden" onchange="handleAvatarChange(event)">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-sage-700 uppercase">角色设定</label>
+                    <textarea id="system-prompt" rows="2" placeholder="System Prompt..." class="pixel-input text-sm mt-1"></textarea>
+                </div>
+                <div class="pixel-card p-2 bg-sage-50 border-2 border-sage-300">
+                    <div class="flex justify-between items-center cursor-pointer" onclick="toggleAdvanced('new-advanced')">
+                        <span class="text-xs font-bold text-sage-700">高级参数</span>
+                        <i class="fas fa-chevron-down text-xs text-sage-600" id="new-advanced-icon"></i>
+                    </div>
+                    <div id="new-advanced" class="hidden mt-2 space-y-2">
+                        <div>
+                            <div class="flex justify-between text-xs mb-1"><span class="text-sage-700">Temperature</span><span class="param-value" id="new-temp-val">0.7</span></div>
+                            <input type="range" min="0" max="20" value="7" class="pixel-range" id="new-temp" oninput="updateRangeVal('new-temp', 'new-temp-val', 0, 20, 0.1)">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs mb-1"><span class="text-sage-700">Max Tokens</span><span class="param-value" id="new-max-val">2048</span></div>
+                            <input type="range" min="1" max="40" value="20" class="pixel-range" id="new-max" oninput="updateRangeVal('new-max', 'new-max-val', 100, 4000, 100)">
+                        </div>
+                    </div>
+                </div>
+                <button onclick="createContact()" class="pixel-btn w-full text-sm mt-2"><i class="fas fa-play mr-1"></i>启动</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-form-modal" class="pixel-modal hidden">
+        <div class="pixel-modal-content p-4">
+            <h2 class="text-lg font-bold text-sage-900 mb-3 border-b-3 border-sage-800 pb-2">存储 API 密钥</h2>
+            <div class="space-y-2">
+                <input type="text" id="pass-name" placeholder="配置名称" class="pixel-input text-sm">
+                <select id="pass-provider" class="pixel-input text-sm" onchange="updateProviderHints()">
+                    <option value="openai">OpenAI</option>
+                    <option value="claude">Claude</option>
+                    <option value="gemini">Gemini</option>
+                    <option value="custom">自定义</option>
+                </select>
+                <input type="text" id="pass-base-url" placeholder="Base URL" class="pixel-input text-sm">
+                <input type="password" id="pass-api-key" placeholder="API Key" class="pixel-input text-sm font-mono text-xs">
+                <input type="text" id="pass-model" placeholder="模型 (如: gpt-4)" class="pixel-input text-sm">
+                <div class="flex gap-2 mt-3">
+                    <button onclick="savePassword()" class="pixel-btn flex-1 text-sm">保存</button>
+                    <button onclick="closeModal('password-form-modal')" class="pixel-btn small secondary flex-1">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="hidden fixed top-12 left-1/2 transform -translate-x-1/2 z-50">
+        <div class="pixel-card bg-sage-800 text-white px-4 py-2 text-sm font-bold border-2 border-white" id="toast-content"></div>
+    </div>
+</div>
+
+<script>
+// Configuration & Storage
+const CONFIG = { maxMessages: 50, liteMode: false, maxImageSize: 512, animationSpeed: 20 };
+const Storage = {
+    keys: { contacts: 'yuc_lite_contacts', passwords: 'yuc_lite_passwords', messages: 'yuc_lite_msg_', settings: 'yuc_lite_settings' },
+    encode(str) { try { return btoa(unescape(encodeURIComponent(str))); } catch(e) { return str; } },
+    decode(str) { try { return decodeURIComponent(escape(atob(str))); } catch(e) { return str; } },
+    getContacts() { const data = localStorage.getItem(this.keys.contacts); return data ? JSON.parse(this.decode(data)) : []; },
+    saveContacts(contacts) { localStorage.setItem(this.keys.contacts, this.encode(JSON.stringify(contacts))); updateStorageStats(); },
+    getPasswords() { const data = localStorage.getItem(this.keys.passwords); return data ? JSON.parse(this.decode(data)) : []; },
+    savePasswords(passwords) { localStorage.setItem(this.keys.passwords, this.encode(JSON.stringify(passwords))); },
+    getMessages(contactId) { const data = localStorage.getItem(this.keys.messages + contactId); const msgs = data ? JSON.parse(this.decode(data)) : []; if (msgs.length > CONFIG.maxMessages) return msgs.slice(-CONFIG.maxMessages); return msgs; },
+    saveMessages(contactId, messages) { if (messages.length > CONFIG.maxMessages) messages = messages.slice(-CONFIG.maxMessages); localStorage.setItem(this.keys.messages + contactId, this.encode(JSON.stringify(messages))); updateStorageStats(); },
+    deleteMessages(contactId) { localStorage.removeItem(this.keys.messages + contactId); },
+    getSettings() { const data = localStorage.getItem(this.keys.settings); return data ? JSON.parse(this.decode(data)) : { liteMode: false }; },
+    saveSettings(settings) { localStorage.setItem(this.keys.settings, this.encode(JSON.stringify(settings))); },
+    clearAll() { Object.values(this.keys).forEach(key => { if (key.includes('_')) { for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith(key)) localStorage.removeItem(k); } } else { localStorage.removeItem(key); } }); },
+    getSize() { let size = 0; for (let key in localStorage) { if (localStorage.hasOwnProperty(key)) size += localStorage[key].length * 2; } return size; }
+};
+
+let currentContact = null, currentMessages = [], isTyping = false, useSearch = false, tempAvatar = null, tempBg = null;
+
+function initSettings() { const settings = Storage.getSettings(); CONFIG.liteMode = settings.liteMode; if (CONFIG.liteMode) { CONFIG.maxMessages = 30; CONFIG.animationSpeed = 0; document.body.classList.add('lite-mode'); document.getElementById('lite-toggle').classList.add('active'); document.getElementById('msg-limit-display').textContent = '30条'; document.getElementById('anim-status').textContent = '关闭'; } updateStorageStats(); }
+function toggleLiteMode() { CONFIG.liteMode = !CONFIG.liteMode; const toggle = document.getElementById('lite-toggle'); if (CONFIG.liteMode) { CONFIG.maxMessages = 30; CONFIG.animationSpeed = 0; document.body.classList.add('lite-mode'); toggle.classList.add('active'); document.getElementById('msg-limit-display').textContent = '30条'; document.getElementById('anim-status').textContent = '关闭'; showToast('轻量模式已开启'); } else { CONFIG.maxMessages = 100; CONFIG.animationSpeed = 20; document.body.classList.remove('lite-mode'); toggle.classList.remove('active'); document.getElementById('msg-limit-display').textContent = '100条'; document.getElementById('anim-status').textContent = '开启'; showToast('性能模式已开启'); } Storage.saveSettings({ liteMode: CONFIG.liteMode }); }
+
+async function compressImage(file, maxSize = CONFIG.maxImageSize) { return new Promise((resolve) => { if (CONFIG.liteMode && file.size > 100 * 1024) { showToast('轻量模式: 图片需<100KB'); resolve(null); return; } const reader = new FileReader(); reader.onload = (e) => { const img = new Image(); img.onload = () => { const canvas = document.createElement('canvas'); let width = img.width, height = img.height; if (width > height) { if (width > maxSize) { height *= maxSize / width; width = maxSize; } } else { if (height > maxSize) { width *= maxSize / height; height = maxSize; } } canvas.width = width; canvas.height = height; const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, width, height); const compressed = canvas.toDataURL('image/jpeg', 0.7); resolve(compressed); }; img.src = e.target.result; }; reader.readAsDataURL(file); }); }
+
+function updateClock() { const now = new Date(); document.getElementById('clock').textContent = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`; }
+setInterval(updateClock, 1000); updateClock();
+
+function switchTab(tab) { document.querySelectorAll('.view').forEach(v => { v.classList.add('hidden'); v.classList.remove('flex'); }); const viewMap = { 'contacts': 'contacts-view', 'password': 'password-view', 'about': 'about-view', 'settings': 'settings-view' }; const view = document.getElementById(viewMap[tab]); view.classList.remove('hidden'); view.classList.add('flex'); document.querySelectorAll('.pixel-tab-btn').forEach(btn => { if (btn.dataset.tab === tab) btn.classList.add('active'); else btn.classList.remove('active'); }); if (tab === 'contacts') renderContacts(); if (tab === 'password') renderPasswords(); if (tab === 'settings') updateStorageStats(); }
+
+function updateStorageStats() { const size = Storage.getSize(); const kb = (size / 1024).toFixed(1); document.getElementById('storage-size').textContent = `${kb} KB`; const percent = Math.min((size / (5 * 1024 * 1024)) * 100, 100); document.getElementById('storage-bar').style.width = `${percent}%`; if (percent > 80) document.getElementById('storage-bar').style.background = '#b86748'; else document.getElementById('storage-bar').style.background = '#7aa37a'; }
+
+function renderContacts() { const list = document.getElementById('contacts-list'); const contacts = Storage.getContacts(); if (contacts.length === 0) { list.innerHTML = `<div class="text-center py-8 opacity-50"><i class="fas fa-ghost text-4xl mb-2 text-sage-400"></i><p class="font-mono text-xs text-sage-600">NO_DATA</p></div>`; return; } const fragment = document.createDocumentFragment(); contacts.forEach(contact => { const div = document.createElement('div'); div.className = 'pixel-card bg-white p-2 flex items-center gap-2 cursor-pointer active:opacity-70'; div.onclick = () => openChat(contact.id); div.innerHTML = `<img src="${contact.avatar}" class="pixel-avatar w-10 h-10" loading="lazy" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'%23d19772\' viewBox=\'0 0 48 48\'%3E%3Cpath d=\'M24 4C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95 20-20S35.05 4 24 4zm0 6c3.31 0 6 2.69 6 6 0 3.32-2.69 6-6 6s-6-2.68-6-6c0-3.31 2.69-6 6-6zm0 28.4c-5.01 0-9.41-2.56-12-6.44.05-3.97 8.01-6.16 12-6.16s11.94 2.19 12 6.16c-2.59 3.88-6.99 6.44-12 6.44z\'/%3E%3C/svg%3E'"><div class="flex-1 min-w-0"><div class="flex justify-between items-baseline"><h3 class="font-bold text-sage-900 text-xs truncate">${contact.name}</h3><span class="text-[9px] font-mono text-terracotta-600">${contact.lastTime || ''}</span></div><p class="text-[10px] text-sage-600 font-mono truncate">${contact.lastMessage || 'Ready'}</p></div>`; fragment.appendChild(div); }); list.innerHTML = ''; list.appendChild(fragment); }
+
+function searchContacts(query) { const contacts = Storage.getContacts(); const filtered = contacts.filter(c => c.name.toLowerCase().includes(query.toLowerCase())); const list = document.getElementById('contacts-list'); if (filtered.length === 0) { list.innerHTML = '<div class="text-center py-4 text-sage-500 text-xs">无匹配</div>'; return; } list.innerHTML = filtered.map(contact => `<div class="pixel-card bg-white p-2 flex items-center gap-2 cursor-pointer" onclick="openChat('${contact.id}')"><img src="${contact.avatar}" class="pixel-avatar w-10 h-10" loading="lazy"><div class="flex-1 min-w-0"><h3 class="font-bold text-sage-900 text-xs">${contact.name}</h3><p class="text-[10px] text-sage-600 font-mono truncate">${contact.lastMessage || 'Ready'}</p></div></div>`).join(''); }
+
+function toggleChatMenu() { const menu = document.getElementById('chat-menu'); const overlay = document.getElementById('chat-menu-overlay'); if (menu.classList.contains('hidden')) { menu.classList.remove('hidden'); overlay.classList.remove('hidden'); } else { closeChatMenu(); } }
+function closeChatMenu() { document.getElementById('chat-menu').classList.add('hidden'); document.getElementById('chat-menu-overlay').classList.add('hidden'); }
+
+function openParamsModal() { if (!currentContact) return; closeChatMenu(); const params = currentContact.params || { temperature: 0.7, max_tokens: 2048, top_p: 1.0, presence_penalty: 0 }; document.getElementById('param-temp').value = (params.temperature || 0.7) * 10; document.getElementById('param-temp-val').textContent = params.temperature || 0.7; document.getElementById('param-max').value = (params.max_tokens || 2048) / 100; document.getElementById('param-max-val').textContent = params.max_tokens || 2048; document.getElementById('param-top').value = (params.top_p || 1.0) * 10; document.getElementById('param-top-val').textContent = params.top_p || 1.0; document.getElementById('param-pres').value = (params.presence_penalty || 0) * 10; document.getElementById('param-pres-val').textContent = params.presence_penalty || 0; document.getElementById('params-modal').classList.remove('hidden'); }
+function updateParam(key, value) { const displayMap = { 'temperature': { id: 'param-temp-val', scale: 0.1 }, 'max_tokens': { id: 'param-max-val', scale: 100 }, 'top_p': { id: 'param-top-val', scale: 0.1 }, 'presence_penalty': { id: 'param-pres-val', scale: 0.1 } }; const config = displayMap[key]; const realVal = (value * config.scale).toFixed(1); document.getElementById(config.id).textContent = realVal; }
+function saveParams() { if (!currentContact) return; const params = { temperature: parseFloat(document.getElementById('param-temp-val').textContent), max_tokens: parseInt(document.getElementById('param-max-val').textContent), top_p: parseFloat(document.getElementById('param-top-val').textContent), presence_penalty: parseFloat(document.getElementById('param-pres-val').textContent) }; const contacts = Storage.getContacts(); const idx = contacts.findIndex(c => c.id === currentContact.id); if (idx !== -1) { contacts[idx].params = params; currentContact.params = params; Storage.saveContacts(contacts); updateParamsDisplay(); showToast('参数已更新'); } closeModal('params-modal'); }
+function updateParamsDisplay() { if (!currentContact) return; const p = currentContact.params || { temperature: 0.7, max_tokens: 2048 }; document.getElementById('chat-params').textContent = `T:${p.temperature || 0.7} | M:${p.max_tokens || 2048}`; }
+function updateRangeVal(inputId, displayId, min, max, step) { const val = document.getElementById(inputId).value; const realVal = (min + (val * step)).toFixed(1); document.getElementById(displayId).textContent = realVal; }
+function toggleAdvanced(id) { const el = document.getElementById(id); const icon = document.getElementById(id + '-icon'); if (el.classList.contains('hidden')) { el.classList.remove('hidden'); icon.classList.remove('fa-chevron-down'); icon.classList.add('fa-chevron-up'); } else { el.classList.add('hidden'); icon.classList.remove('fa-chevron-up'); icon.classList.add('fa-chevron-down'); } }
+async function handleAvatarChange(e) { const file = e.target.files[0]; if (!file) return; showToast('压缩中...'); const compressed = await compressImage(file, 128); if (compressed) { tempAvatar = compressed; document.getElementById('new-avatar-preview').src = compressed; } }
+async function handleBgChange(e) { const file = e.target.files[0]; if (!file) return; showToast('压缩中...'); const compressed = await compressImage(file, CONFIG.maxImageSize); if (compressed) { tempBg = compressed; const preview = document.getElementById('bg-preview'); preview.classList.remove('hidden'); preview.querySelector('img').src = compressed; } }
+function showNewContactModal() { updateApiSelect(); document.getElementById('new-contact-modal').classList.remove('hidden'); }
+function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+function updateApiSelect() { const select = document.getElementById('api-config-select'); const passwords = Storage.getPasswords(); let html = '<option value="">选择密钥...</option>'; passwords.forEach((p, i) => { html += `<option value="${i}">${p.name} // ${p.model}</option>`; }); select.innerHTML = html; }
+function createContact() { const name = document.getElementById('contact-name').value.trim(); const prompt = document.getElementById('system-prompt').value.trim(); const apiIdx = document.getElementById('api-config-select').value; if (!name || apiIdx === '') { showToast('请填写名称并选择API'); return; } const passwords = Storage.getPasswords(); const apiConfig = passwords[parseInt(apiIdx)]; const params = { temperature: parseFloat(document.getElementById('new-temp-val').textContent) || 0.7, max_tokens: parseInt(document.getElementById('new-max-val').textContent) || 2048, top_p: parseFloat(document.getElementById('new-top-val').textContent) || 1.0, presence_penalty: 0, frequency_penalty: 0 }; const contact = { id: Date.now().toString(), name: name, avatar: tempAvatar || 'data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' fill=\'%23d19772\' viewBox=\'0 0 48 48\'%3E%3Cpath d=\'M24 4C12.95 4 4 12.95 4 24s8.95 20 20 20 20-8.95 20-20S35.05 4 24 4zm0 6c3.31 0 6 2.69 6 6 0 3.32-2.69 6-6 6s-6-2.68-6-6c0-3.31 2.69-6 6-6zm0 28.4c-5.01 0-9.41-2.56-12-6.44.05-3.97 8.01-6.16 12-6.16s11.94 2.19 12 6.16c-2.59 3.88-6.99 6.44-12 6.44z\'/%3E%3C/svg%3E', background: tempBg, systemPrompt: prompt, apiConfig: apiConfig, params: params, createdAt: new Date().toISOString() }; const contacts = Storage.getContacts(); contacts.push(contact); Storage.saveContacts(contacts); document.getElementById('contact-name').value = ''; document.getElementById('system-prompt').value = ''; document.getElementById('api-config-select').value = ''; tempAvatar = null; tempBg = null; document.getElementById('bg-preview').classList.add('hidden'); closeModal('new-contact-modal'); renderContacts(); openChat(contact.id); }
+function openChat(contactId) { const contacts = Storage.getContacts(); currentContact = contacts.find(c => c.id === contactId); if (!currentContact) return; document.getElementById('chat-title').textContent = currentContact.name; updateParamsDisplay(); if (currentContact.background) { document.getElementById('chat-bg').style.backgroundImage = `url(${currentContact.background})`; } else { document.getElementById('chat-bg').style.backgroundImage = ''; } currentMessages = Storage.getMessages(contactId); renderMessages(); document.getElementById('contacts-view').classList.add('hidden'); document.getElementById('contacts-view').classList.remove('flex'); document.getElementById('chat-view').classList.remove('hidden'); document.getElementById('chat-view').classList.add('flex'); document.querySelector('.pixel-tab-bar').classList.add('hidden'); scrollToBottom(); }
+function backToContacts() { document.getElementById('chat-view').classList.add('hidden'); document.getElementById('chat-view').classList.remove('flex'); document.getElementById('contacts-view').classList.remove('hidden'); document.getElementById('contacts-view').classList.add('flex'); document.querySelector('.pixel-tab-bar').classList.remove('hidden'); currentContact = null; switchTab('contacts'); }
+function renderMessages() { const container = document.getElementById('messages-container'); if (currentMessages.length === 0) { container.innerHTML = '<div class="text-center mt-8 opacity-30 text-xs font-mono">START_CONVERSATION</div>'; return; } const html = currentMessages.slice(-20).map(msg => { if (msg.role === 'system') return ''; const isUser = msg.role === 'user'; const bubbleClass = isUser ? 'bubble-sent' : 'bubble-received'; const avatar = isUser ? '' : `<img src="${currentContact.avatar}" class="pixel-avatar w-8 h-8" loading="lazy">`; return `<div class="flex ${isUser ? 'justify-end' : 'justify-start'} items-end gap-2 mb-3">${avatar}<div class="pixel-bubble ${bubbleClass} text-sm">${msg.content}</div></div>`; }).join(''); container.innerHTML = html; }
+function handleKeyPress(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }
+function toggleSearch() { useSearch = !useSearch; const btn = document.getElementById('search-btn'); const indicator = document.getElementById('search-indicator'); if (useSearch) { btn.style.background = '#b86748'; btn.style.color = 'white'; indicator.classList.remove('hidden'); } else { btn.style.background = ''; btn.style.color = ''; indicator.classList.add('hidden'); } }
+async function sendMessage() { const input = document.getElementById('message-input'); const text = input.value.trim(); if (!text || isTyping || !currentContact) return; const apiConfig = currentContact.apiConfig; if (!apiConfig?.apiKey) { showToast('缺少API配置'); return; } currentMessages.push({ role: 'user', content: text, time: Date.now() }); renderMessages(); input.value = ''; scrollToBottom(); Storage.saveMessages(currentContact.id, currentMessages); updateLastMessage(text); showTyping(); isTyping = true; try { let messages = []; if (currentContact.systemPrompt) { messages.push({ role: 'system', content: currentContact.systemPrompt }); } messages = messages.concat(currentMessages.slice(-10)); const params = currentContact.params || {}; const response = await callLLM(apiConfig, messages, params); hideTyping(); if (CONFIG.animationSpeed > 0) { await typeWriter(response); } else { currentMessages.push({ role: 'assistant', content: response, time: Date.now() }); Storage.saveMessages(currentContact.id, currentMessages); renderMessages(); updateLastMessage(response.substring(0, 30)); } } catch (error) { hideTyping(); showToast('Error: ' + error.message); currentMessages.push({ role: 'assistant', content: `<span style="color:#b86748">Error: ${error.message}</span>`, time: Date.now() }); Storage.saveMessages(currentContact.id, currentMessages); renderMessages(); } isTyping = false; }
+async function callLLM(config, messages, params = {}) { const { provider, baseUrl, apiKey, model } = config; const { temperature = 0.7, max_tokens = 2048, top_p = 1.0, presence_penalty = 0 } = params; const body = { model: model || 'gpt-3.5-turbo', messages: messages, temperature: temperature, max_tokens: max_tokens, top_p: top_p, presence_penalty: presence_penalty, stream: false }; let url, headers; if (provider === 'claude') { url = baseUrl || 'https://api.anthropic.com/v1/messages'; headers = { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }; const claudeBody = { model: model || 'claude-3-opus-20240229', max_tokens: max_tokens, messages: messages.filter(m => m.role !== 'system').map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })) }; if (messages[0]?.role === 'system') { claudeBody.system = messages[0].content; } const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(claudeBody) }); if (!res.ok) throw new Error((await res.json()).error?.message || 'API Error'); const data = await res.json(); return data.content[0].text; } else if (provider === 'gemini') { url = `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`; headers = { 'Content-Type': 'application/json' }; const geminiBody = { contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })) }; const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(geminiBody) }); if (!res.ok) throw new Error((await res.json()).error?.message || 'API Error'); const data = await res.json(); return data.candidates[0].content.parts[0].text; } else { url = baseUrl ? `${baseUrl}/chat/completions` : 'https://api.openai.com/v1/chat/completions'; headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }; const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) }); if (!res.ok) throw new Error((await res.json()).error?.message || 'API Error'); const data = await res.json(); return data.choices[0].message.content; } }
+function showTyping() { if (CONFIG.liteMode) return; const container = document.getElementById('messages-container'); const div = document.createElement('div'); div.id = 'typing-indicator'; div.className = 'flex justify-start items-end gap-2 mb-3'; div.innerHTML = `<img src="${currentContact.avatar}" class="pixel-avatar w-8 h-8"><div class="pixel-typing"><div class="pixel-dot"></div><div class="pixel-dot"></div><div class="pixel-dot"></div></div>`; container.appendChild(div); scrollToBottom(); }
+function hideTyping() { const el = document.getElementById('typing-indicator'); if (el) el.remove(); }
+async function typeWriter(text) { if (CONFIG.liteMode) { currentMessages.push({ role: 'assistant', content: text, time: Date.now() }); Storage.saveMessages(currentContact.id, currentMessages); renderMessages(); updateLastMessage(text.substring(0, 30)); return; } const container = document.getElementById('messages-container'); const div = document.createElement('div'); div.className = 'flex justify-start items-end gap-2 mb-3'; div.innerHTML = `<img src="${currentContact.avatar}" class="pixel-avatar w-8 h-8"><div class="pixel-bubble bubble-received text-sm typing-cursor" id="typing-text"></div>`; container.appendChild(div); scrollToBottom(); const textDiv = document.getElementById('typing-text'); let i = 0; const batchSize = 3; while (i < text.length) { const end = Math.min(i + batchSize, text.length); textDiv.textContent = text.substring(0, end); i = end; scrollToBottom(); await sleep(CONFIG.animationSpeed); } textDiv.innerHTML = marked.parse(text); textDiv.classList.remove('typing-cursor'); currentMessages.push({ role: 'assistant', content: text, time: Date.now() }); Storage.saveMessages(currentContact.id, currentMessages); updateLastMessage(text.substring(0, 30)); }
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function scrollToBottom() { const c = document.getElementById('messages-container'); c.scrollTop = c.scrollHeight; }
+function updateLastMessage(text) { const contacts = Storage.getContacts(); const idx = contacts.findIndex(c => c.id === currentContact.id); if (idx !== -1) { contacts[idx].lastMessage = text; contacts[idx].lastTime = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }); Storage.saveContacts(contacts); } }
+function resetCurrentChat() { if (!currentContact) return; closeChatMenu(); if (!confirm('清空当前对话?')) return; currentMessages = []; Storage.saveMessages(currentContact.id, []); renderMessages(); showToast('已清空'); }
+function renderPasswords() { const list = document.getElementById('password-list'); const passwords = Storage.getPasswords(); if (passwords.length === 0) { list.innerHTML = '<div class="text-center py-8 opacity-50 text-xs">无密钥</div>'; return; } list.innerHTML = passwords.map((p, i) => `<div class="pixel-card p-2 bg-cream"><div class="flex justify-between items-start"><div><div class="flex items-center gap-1"><span class="font-bold text-xs text-sage-900">${p.name}</span><span class="text-[8px] bg-terracotta-500 text-white px-1 border border-sage-900">${p.provider}</span></div><div class="text-[9px] font-mono text-sage-600 mt-1">${p.model}</div></div><button onclick="deletePassword(${i})" class="text-terracotta-500 text-xs p-1"><i class="fas fa-trash"></i></button></div></div>`).join(''); }
+function showNewPasswordModal() { document.getElementById('password-form-modal').classList.remove('hidden'); }
+function updateProviderHints() { const p = document.getElementById('pass-provider').value; const urls = { 'openai': 'https://api.openai.com/v1', 'claude': 'https://api.anthropic.com/v1/messages', 'gemini': 'https://generativelanguage.googleapis.com', 'custom': '' }; document.getElementById('pass-base-url').placeholder = urls[p] || 'URL'; }
+function savePassword() { const name = document.getElementById('pass-name').value.trim(); const provider = document.getElementById('pass-provider').value; const baseUrl = document.getElementById('pass-base-url').value.trim(); const apiKey = document.getElementById('pass-api-key').value.trim(); const model = document.getElementById('pass-model').value.trim(); if (!name || !apiKey) { showToast('填写名称和Key'); return; } const passwords = Storage.getPasswords(); passwords.push({ name, provider, baseUrl, apiKey, model: model || 'gpt-3.5-turbo' }); Storage.savePasswords(passwords); document.getElementById('pass-name').value = ''; document.getElementById('pass-api-key').value = ''; closeModal('password-form-modal'); renderPasswords(); showToast('已保存'); }
+function deletePassword(idx) { if (!confirm('删除?')) return; const passwords = Storage.getPasswords(); passwords.splice(idx, 1); Storage.savePasswords(passwords); renderPasswords(); }
+function clearCache() { if (!confirm('清空所有数据?')) return; Storage.clearAll(); currentMessages = []; currentContact = null; showToast('已重置'); setTimeout(() => location.reload(), 500); }
+function showToast(msg) { const toast = document.getElementById('toast'); document.getElementById('toast-content').textContent = msg; toast.classList.remove('hidden'); setTimeout(() => toast.classList.add('hidden'), 2000); }
+
+document.addEventListener('DOMContentLoaded', () => { initSettings(); renderContacts(); updateApiSelect(); document.addEventListener('gesturestart', e => e.preventDefault()); document.addEventListener('dblclick', e => e.preventDefault()); });
+</script>
+
+</body>
+</html>
